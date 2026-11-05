@@ -28,8 +28,9 @@ docker compose up   # 1주차 완료 후 동작
 ## 문서
 - [AS-IS 분석](docs/AS-IS.md)
 - [PRD](docs/PRD.md)
+- [ERD와 도메인 결정](docs/ERD.md)
 - [이슈 목록 초안](docs/issues.md)
-- (예정) TO-BE, ERD, ADR, 성능 측정 결과(`docs/performance.md`), 자동화 플로우(`docs/automation.md`)
+- (예정) TO-BE, ADR, 성능 측정 결과(`docs/performance.md`), 자동화 플로우(`docs/automation.md`)
 
 ## 로드맵
 | 주차 | 목표 |

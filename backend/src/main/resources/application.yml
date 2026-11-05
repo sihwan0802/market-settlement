@@ -13,6 +13,10 @@ mybatis:
   mapper-locations: classpath:mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true
+app:
+  jwt:
+    # 개발용 기본값. 배포 환경에서는 JWT_SECRET 환경변수로 32바이트 이상 값을 주입
+    secret: ${JWT_SECRET:dev-only-secret-key-change-me-0123456789}
 management:
   endpoints:
     web:

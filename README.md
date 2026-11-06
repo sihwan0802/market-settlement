@@ -22,7 +22,7 @@
 
 ## 실행 방법
 ```bash
-docker compose up   # 1주차 완료 후 동작
+docker compose up --build   # http://localhost:8080/actuator/health
 ```
 
 ## 문서

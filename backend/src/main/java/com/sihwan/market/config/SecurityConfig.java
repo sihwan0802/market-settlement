@@ -40,6 +40,7 @@ public class SecurityConfig {
                         .requestMatchers("/api/auth/**", "/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/products").permitAll()
                         .requestMatchers("/api/products/**", "/api/products").hasRole("SELLER")
+                        .requestMatchers("/api/orders/**", "/api/orders").hasRole("BUYER")
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter)))
                 .build();

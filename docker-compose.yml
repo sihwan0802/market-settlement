@@ -1,4 +1,16 @@
 services:
+  app:
+    build: ./backend
+    ports: ["8080:8080"]
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/market
+      DB_USER: market
+      DB_PASSWORD: market
+      REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:-dev-only-secret-key-change-me-0123456789}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
   postgres:
     image: postgres:17
     environment:
@@ -7,6 +19,10 @@ services:
       POSTGRES_PASSWORD: market
     ports: ["5432:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U market -d market"]
+      interval: 3s
+      retries: 10
   redis:
     image: redis:7
     ports: ["6379:6379"]

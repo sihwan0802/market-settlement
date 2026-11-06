@@ -37,6 +37,5 @@ docker compose up --build   # http://localhost:8080/actuator/health
 | 주차 | 목표 |
 | --- | --- |
 | 1 | 도메인·ERD·핵심 API·Docker Compose |
-| 2 | 결제·정산 배치·Redis·최소 프론트 |
-| 3 | AWS 배포·CI/CD·모니터링 |
-| 4 | k6 전후 측정·README·노션 정리 |
+| 2 | 결제·환불·정산 배치·시드 데이터·k6 기준 측정·Redis |
+| 3 | 최소 프론트·AWS 배포·CI/CD·모니터링·전후 측정·문서 정리 |

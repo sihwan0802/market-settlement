@@ -94,7 +94,6 @@ class OrderIntegrationTest {
         long b = createProduct(seller, 1000, 1);
         String buyer = signupAndLogin("BUYER");
 
-        // a는 먼저 차감되지만 b가 부족하므로 a도 원래대로 돌아와야 한다
         assertEquals(409, order(buyer, body(a, 2, b, 2)));
         assertEquals(5, stock(a));
         assertEquals(1, stock(b));

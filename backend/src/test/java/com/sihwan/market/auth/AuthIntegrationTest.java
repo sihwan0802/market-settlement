@@ -15,7 +15,6 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
-// ponytail: docker compose의 PostgreSQL을 그대로 사용. CI(#18)에서는 service 컨테이너로 대체
 @SpringBootTest
 @AutoConfigureMockMvc
 class AuthIntegrationTest {

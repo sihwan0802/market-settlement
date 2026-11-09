@@ -1,12 +1,14 @@
 package com.sihwan.market.config;
 
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -42,8 +44,20 @@ public class SecurityConfig {
                         .requestMatchers("/api/products/**", "/api/products").hasRole("SELLER")
                         .requestMatchers("/api/orders/**", "/api/orders").hasRole("BUYER")
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(o -> o.jwt(j -> j.jwtAuthenticationConverter(converter)))
+                .oauth2ResourceServer(o -> o
+                        .jwt(j -> j.jwtAuthenticationConverter(converter))
+                        .authenticationEntryPoint((req, res, e) -> writeError(res, 401, "UNAUTHORIZED", "인증이 필요합니다"))
+                        .accessDeniedHandler((req, res, e) -> writeError(res, 403, "FORBIDDEN", "권한이 없습니다")))
                 .build();
+    }
+
+    private static void writeError(HttpServletResponse res, int status, String code, String message) throws IOException {
+        res.setStatus(status);
+        res.setContentType("application/json;charset=UTF-8");
+        if (status == 401) {
+            res.setHeader("WWW-Authenticate", "Bearer");
+        }
+        res.getWriter().write("{\"status\":%d,\"code\":\"%s\",\"message\":\"%s\"}".formatted(status, code, message));
     }
 
     @Bean

@@ -1,5 +1,7 @@
 package com.sihwan.market.order;
 
+import java.util.List;
+import java.util.Optional;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -21,4 +23,20 @@ public interface OrderMapper {
     void insertItem(@Param("orderId") long orderId, @Param("productId") long productId,
                     @Param("sellerId") long sellerId, @Param("unitPrice") long unitPrice,
                     @Param("qty") int qty, @Param("amount") long amount);
+
+    @Select("SELECT id, buyer_id, status, total_amount FROM orders WHERE id = #{id}")
+    Optional<Order> findById(@Param("id") long id);
+
+    @Update("UPDATE orders SET status = 'PAID' WHERE id = #{id} AND status = 'CREATED'")
+    int markPaid(@Param("id") long id);
+
+    @Select("SELECT id FROM orders WHERE status = 'CREATED' AND ordered_at < now() - make_interval(mins => #{minutes})")
+    List<Long> findExpiredIds(@Param("minutes") int minutes);
+
+    @Update("UPDATE orders SET status = 'CANCELED' WHERE id = #{id} AND status = 'CREATED'")
+    int cancel(@Param("id") long id);
+
+    @Update("UPDATE inventory SET stock = stock + oi.quantity, updated_at = now() "
+            + "FROM order_item oi WHERE oi.order_id = #{orderId} AND inventory.product_id = oi.product_id")
+    void restoreStock(@Param("orderId") long orderId);
 }

@@ -17,6 +17,12 @@ app:
   jwt:
     # 개발용 기본값. 배포 환경에서는 JWT_SECRET 환경변수로 32바이트 이상 값을 주입
     secret: ${JWT_SECRET:dev-only-secret-key-change-me-0123456789}
+  portone:
+    base-url: https://api.portone.io
+    api-secret: ${PORTONE_API_SECRET:}
+  order:
+    expire-minutes: 30
+    expire-check-ms: 60000
 management:
   endpoints:
     web:

@@ -39,4 +39,19 @@ public interface OrderMapper {
     @Update("UPDATE inventory SET stock = stock + oi.quantity, updated_at = now() "
             + "FROM order_item oi WHERE oi.order_id = #{orderId} AND inventory.product_id = oi.product_id")
     void restoreStock(@Param("orderId") long orderId);
+
+    @Select("SELECT id, order_id, product_id, quantity, amount FROM order_item WHERE id = #{itemId} AND order_id = #{orderId}")
+    Optional<OrderItem> findItem(@Param("orderId") long orderId, @Param("itemId") long itemId);
+
+    @Select("SELECT count(*) FROM order_item WHERE order_id = #{orderId}")
+    int countItems(@Param("orderId") long orderId);
+
+    @Select("SELECT id FROM orders WHERE id = #{id} FOR UPDATE")
+    long lockById(@Param("id") long id);
+
+    @Update("UPDATE orders SET status = #{status} WHERE id = #{id} AND status IN ('PAID', 'PARTIAL_REFUNDED')")
+    int updateRefundStatus(@Param("id") long id, @Param("status") String status);
+
+    @Update("UPDATE inventory SET stock = stock + #{qty}, updated_at = now() WHERE product_id = #{productId}")
+    void increaseStock(@Param("productId") long productId, @Param("qty") int qty);
 }

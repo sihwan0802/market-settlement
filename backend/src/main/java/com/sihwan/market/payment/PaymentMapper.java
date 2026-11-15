@@ -17,4 +17,11 @@ public interface PaymentMapper {
             + "VALUES (#{orderId}, #{paymentId}, #{paymentId}, #{amount}, 'PAID', now())")
     void insertPaid(@Param("orderId") long orderId, @Param("paymentId") String paymentId,
                     @Param("amount") long amount);
+
+    @Select("SELECT id, order_id, portone_payment_id, amount, status FROM payment "
+            + "WHERE order_id = #{orderId} AND status = 'PAID'")
+    Optional<Payment> findPaidByOrderId(@Param("orderId") long orderId);
+
+    @Update("UPDATE payment SET status = 'CANCELED' WHERE id = #{id}")
+    void markCanceled(@Param("id") long id);
 }

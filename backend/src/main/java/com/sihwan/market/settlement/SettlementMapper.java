@@ -45,4 +45,20 @@ public interface SettlementMapper {
             + "VALUES (#{settlementId}, #{type}, #{sourceId}, #{amount})")
     void insertItem(@Param("settlementId") long settlementId, @Param("type") String type,
                     @Param("sourceId") long sourceId, @Param("amount") long amount);
+
+    // 저장된 정산을 원천(주문 항목, 환불)에서 다시 계산한 값과 대조해 어긋난 정산 id를 돌려준다
+    @Select("SELECT s.id FROM settlement s WHERE "
+            + "s.net_amount + s.fee_amount <> s.gross_sales - s.refund_amount "
+            + "OR (SELECT COALESCE(SUM(i.amount), 0) FROM settlement_item i WHERE i.settlement_id = s.id) "
+            + "   <> s.gross_sales - s.refund_amount "
+            + "OR s.gross_sales <> (SELECT COALESCE(SUM(oi.amount), 0) FROM order_item oi "
+            + "   JOIN payment p ON p.order_id = oi.order_id WHERE oi.seller_id = s.seller_id "
+            + "   AND p.status IN ('PAID', 'CANCELED') "
+            + "   AND (p.paid_at AT TIME ZONE 'Asia/Seoul')::date = s.settle_date) "
+            + "OR s.refund_amount <> (SELECT COALESCE(SUM(r.amount), 0) FROM refund r "
+            + "   JOIN order_item oi ON oi.id = r.order_item_id WHERE oi.seller_id = s.seller_id "
+            + "   AND r.status = 'COMPLETED' "
+            + "   AND (r.refunded_at AT TIME ZONE 'Asia/Seoul')::date = s.settle_date) "
+            + "ORDER BY s.id")
+    List<Long> findInconsistentIds();
 }

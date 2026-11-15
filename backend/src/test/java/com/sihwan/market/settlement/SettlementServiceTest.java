@@ -1,8 +1,11 @@
 package com.sihwan.market.settlement;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.LocalDate;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -84,6 +87,9 @@ class SettlementServiceTest {
         assertEquals(-5001L, jdbc.queryForObject("SELECT amount FROM settlement_item WHERE settlement_id = ? "
                 + "AND source_type = 'REFUND'", Long.class, sa.get("id")));
 
+        assertTrue(Collections.disjoint(service.findInconsistent(),
+                List.of(((Number) sa.get("id")).longValue(), ((Number) settlement(b, DAY1).get("id")).longValue())));
+
         assertEquals(0, service.settle(DAY1));                       // 재실행: 중복 없음
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM settlement WHERE seller_id = ?", Integer.class, a));
 
@@ -93,5 +99,29 @@ class SettlementServiceTest {
         assertEquals(20000L, sb2.get("refund_amount"));
         assertEquals(-1000L, sb2.get("fee_amount"));                 // floor(-20000 * 0.05)
         assertEquals(-19000L, sb2.get("net_amount"));
+    }
+
+    @Test
+    void detects_settlements_that_no_longer_match_the_source_data() {
+        LocalDate day = LocalDate.of(2020, 2, 10);
+        long s1 = seller("0.1000");
+        long s2 = seller("0.1000");
+        long s3 = seller("0.1000");
+        long[] i1 = paidItem(s1, product(s1), 10000, "2020-02-10 10:00:00+09");
+        long[] i2 = paidItem(s2, product(s2), 10000, "2020-02-10 10:00:00+09");
+        paidItem(s3, product(s3), 10000, "2020-02-10 10:00:00+09");
+        service.settle(day);
+
+        long id1 = ((Number) settlement(s1, day).get("id")).longValue();
+        long id2 = ((Number) settlement(s2, day).get("id")).longValue();
+        long id3 = ((Number) settlement(s3, day).get("id")).longValue();
+        assertTrue(!service.findInconsistent().contains(id1));
+
+        refund(i1, 3000, "2020-02-10 20:00:00+09");                  // 정산 뒤에 같은 날짜로 환불이 끼어듦
+        jdbc.update("UPDATE settlement SET net_amount = net_amount + 1 WHERE id = ?", id2);   // 금액 변조
+        jdbc.update("DELETE FROM settlement_item WHERE settlement_id = ?", id3);              // 명세 누락
+
+        List<Long> bad = service.findInconsistent();
+        assertTrue(bad.containsAll(List.of(id1, id2, id3)));
     }
 }

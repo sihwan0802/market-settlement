@@ -25,6 +25,11 @@ app:
     api-secret: ${PORTONE_API_SECRET:}
   cache:
     product-ttl-seconds: 30
+  rate-limit:
+    order-limit: 5
+    order-window-seconds: 10
+    login-limit: 10
+    login-window-seconds: 60
   order:
     expire-minutes: 30
     expire-check-ms: 60000

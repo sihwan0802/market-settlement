@@ -6,6 +6,7 @@ import com.sihwan.market.order.OrderMapper;
 import com.sihwan.market.payment.Payment;
 import com.sihwan.market.payment.PaymentMapper;
 import com.sihwan.market.payment.PortOneClient;
+import com.sihwan.market.product.StockReservation;
 import com.sihwan.market.refund.RefundDtos.RefundRequest;
 import com.sihwan.market.refund.RefundDtos.RefundResponse;
 import org.springframework.dao.DuplicateKeyException;
@@ -24,9 +25,11 @@ public class RefundService {
     private final RefundMapper refunds;
     private final PortOneClient portOne;
     private final TransactionTemplate tx;
+    private final StockReservation reservation;
 
     public RefundService(OrderMapper orders, PaymentMapper payments, RefundMapper refunds,
-                         PortOneClient portOne, TransactionTemplate tx) {
+                         PortOneClient portOne, TransactionTemplate tx, StockReservation reservation) {
+        this.reservation = reservation;
         this.orders = orders;
         this.payments = payments;
         this.refunds = refunds;
@@ -65,6 +68,7 @@ public class RefundService {
             orders.lockById(orderId);
             refunds.markCompleted(refundId);
             orders.increaseStock(item.productId(), item.quantity());
+            reservation.invalidateAfterCommit(item.productId());
             boolean all = refunds.countCompleted(orderId) >= orders.countItems(orderId);
             String status = all ? "REFUNDED" : "PARTIAL_REFUNDED";
             orders.updateRefundStatus(orderId, status);

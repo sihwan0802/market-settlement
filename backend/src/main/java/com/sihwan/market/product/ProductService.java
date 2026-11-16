@@ -14,7 +14,10 @@ public class ProductService {
     private final ProductMapper products;
     private final ProductCache cache;
 
-    public ProductService(ProductMapper products, ProductCache cache) {
+    private final StockReservation reservation;
+
+    public ProductService(ProductMapper products, ProductCache cache, StockReservation reservation) {
+        this.reservation = reservation;
         this.products = products;
         this.cache = cache;
     }
@@ -54,6 +57,7 @@ public class ProductService {
         products.updateProduct(id, req.name(), req.price(), req.status());
         products.updateStock(id, req.stock());
         cache.evictAfterCommit(id);
+        reservation.invalidateAfterCommit(id);
     }
 
     // 주문 항목이 상품을 참조하므로 행을 지우지 않고 숨긴다

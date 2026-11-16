@@ -43,6 +43,9 @@ public interface OrderMapper {
     @Select("SELECT id, order_id, product_id, quantity, amount FROM order_item WHERE id = #{itemId} AND order_id = #{orderId}")
     Optional<OrderItem> findItem(@Param("orderId") long orderId, @Param("itemId") long itemId);
 
+    @Select("SELECT product_id FROM order_item WHERE order_id = #{orderId}")
+    List<Long> findProductIds(@Param("orderId") long orderId);
+
     @Select("SELECT count(*) FROM order_item WHERE order_id = #{orderId}")
     int countItems(@Param("orderId") long orderId);
 

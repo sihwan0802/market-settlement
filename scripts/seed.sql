@@ -1,7 +1,7 @@
 -- 부하 테스트용 시드 데이터: 판매자 100명, 구매자 1,000명, 상품 2,000개, 주문 10만 건(최근 30일)
 -- 실행: docker compose exec -T postgres psql -U market -d market -v ON_ERROR_STOP=1 < scripts/seed.sql
 -- 삭제: scripts/seed-clean.sql
--- 로그인 비밀번호는 모두 password123 (seed-seller-1@seed.test, seed-buyer-1@seed.test ...)
+-- 로그인 비밀번호는 모두 password123 (seed-seller-1@seed.test, seed-buyer-1@seed.test, 운영자 seed-admin@seed.test)
 \set ON_ERROR_STOP on
 BEGIN;
 SELECT setseed(0.42);
@@ -23,6 +23,10 @@ FROM generate_series(1, 100) g, seed_hash;
 INSERT INTO member (email, password_hash, name, role)
 SELECT 'seed-buyer-' || g || '@seed.test', h, 'buyer' || g, 'BUYER'
 FROM generate_series(1, 1000) g, seed_hash;
+
+-- 운영자 계정 (관리자 API 호출용)
+INSERT INTO member (email, password_hash, name, role)
+SELECT 'seed-admin@seed.test', h, 'admin', 'ADMIN' FROM seed_hash;
 
 INSERT INTO seller (member_id, store_name, fee_rate)
 SELECT id, 'seed-store-' || n, (ARRAY[0.05, 0.08, 0.10])[1 + n % 3]

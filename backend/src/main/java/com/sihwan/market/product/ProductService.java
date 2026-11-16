@@ -12,9 +12,11 @@ import org.springframework.web.server.ResponseStatusException;
 public class ProductService {
 
     private final ProductMapper products;
+    private final ProductCache cache;
 
-    public ProductService(ProductMapper products) {
+    public ProductService(ProductMapper products, ProductCache cache) {
         this.products = products;
+        this.cache = cache;
     }
 
     @Transactional
@@ -22,18 +24,28 @@ public class ProductService {
         long sellerId = sellerId(memberId);
         long id = products.insertProduct(sellerId, req.name(), req.price(), req.flashSale());
         products.insertInventory(id, req.stock());
+        cache.evictAfterCommit(id);
         return id;
     }
 
     public Product get(long id) {
-        return products.findById(id)
-                .filter(p -> !"HIDDEN".equals(p.status()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "상품이 없습니다"));
+        return cache.getDetail(id).orElseGet(() -> {
+            Product p = products.findById(id)
+                    .filter(found -> !"HIDDEN".equals(found.status()))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "상품이 없습니다"));
+            cache.putDetail(p);
+            return p;
+        });
     }
 
     public List<Product> list(int page, int size) {
+        int safePage = Math.max(page, 0);
         int safeSize = Math.min(Math.max(size, 1), 100);
-        return products.findVisible(safeSize, Math.max(page, 0) * safeSize);
+        return cache.getList(safePage, safeSize).orElseGet(() -> {
+            List<Product> list = products.findVisible(safeSize, safePage * safeSize);
+            cache.putList(safePage, safeSize, list);
+            return list;
+        });
     }
 
     @Transactional
@@ -41,6 +53,7 @@ public class ProductService {
         owned(memberId, id);
         products.updateProduct(id, req.name(), req.price(), req.status());
         products.updateStock(id, req.stock());
+        cache.evictAfterCommit(id);
     }
 
     // 주문 항목이 상품을 참조하므로 행을 지우지 않고 숨긴다
@@ -48,6 +61,7 @@ public class ProductService {
     public void delete(long memberId, long id) {
         owned(memberId, id);
         products.hide(id);
+        cache.evictAfterCommit(id);
     }
 
     private long sellerId(long memberId) {

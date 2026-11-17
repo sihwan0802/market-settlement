@@ -10,7 +10,7 @@ Redis 적용 전(기준) 수치를 먼저 기록하고, 개선 후 수치를 같
 
 ## 재현 방법
 ```bash
-docker compose up -d --build
+RATE_LIMIT_ORDER=100000 RATE_LIMIT_LOGIN=100000 docker compose up -d --build   # 요청 제한(주문 5회/10초, 로그인 10회/분)을 올려서 측정
 docker compose exec -T postgres psql -U market -d market -v ON_ERROR_STOP=1 < scripts/seed.sql
 k6 run perf/product-read.js
 k6 run -e FLASH_PRODUCT_ID=<id> perf/flash-sale.js          # 사전: 해당 상품 재고를 100으로
@@ -75,7 +75,7 @@ k6 run perf/settlement.js                                     # 사전: settleme
 
 ## 개선 후보 (측정 뒤 적용 → 위 표와 비교)
 1. ~~상품 목록·상세 Redis 캐시 (#10)~~ 완료
-2. ~~선착순 재고 Redis 선점 (#11)~~ 완료, 요청 제한 (#12)
+2. ~~선착순 재고 Redis 선점 (#11)~~ 완료, ~~요청 제한 (#12)~~ 완료. 측정은 한도를 올려서 하고, 제한 동작은 테스트로 확인
 3. `order_item(order_id)` 인덱스 추가 → 정합성 검증, 정산, 환불 조회
 4. 정산 배치의 판매자별 쿼리를 한 번에 집계
 5. Tomcat 접속 대기열 설정 (`server.tomcat.accept-count`)

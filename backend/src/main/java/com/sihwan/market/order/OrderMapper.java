@@ -57,4 +57,27 @@ public interface OrderMapper {
 
     @Update("UPDATE inventory SET stock = stock + #{qty}, updated_at = now() WHERE product_id = #{productId}")
     void increaseStock(@Param("productId") long productId, @Param("qty") int qty);
+
+    @Select("SELECT id, status, total_amount, ordered_at FROM orders WHERE buyer_id = #{buyerId} "
+            + "ORDER BY ordered_at DESC, id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<OrderDtos.OrderRow> findByBuyer(@Param("buyerId") long buyerId, @Param("limit") int limit,
+                                         @Param("offset") int offset);
+
+    @Select("SELECT id, status, total_amount, ordered_at FROM orders WHERE id = #{id} AND buyer_id = #{buyerId}")
+    Optional<OrderDtos.OrderRow> findOneByBuyer(@Param("id") long id, @Param("buyerId") long buyerId);
+
+    @Select("<script>SELECT oi.id, oi.order_id, oi.product_id, p.name AS product_name, oi.unit_price, oi.quantity, oi.amount "
+            + "FROM order_item oi JOIN product p ON p.id = oi.product_id "
+            + "WHERE oi.order_id IN <foreach collection='ids' item='i' open='(' separator=',' close=')'>#{i}</foreach> "
+            + "ORDER BY oi.id</script>")
+    List<OrderDtos.ItemRow> findItemsByOrderIds(@Param("ids") List<Long> ids);
+
+    // 결제되지 않은 주문(CREATED, CANCELED)은 판매가 아니므로 뺀다
+    @Select("SELECT o.id AS order_id, oi.id AS item_id, o.status, o.ordered_at, oi.product_id, p.name AS product_name, "
+            + "oi.unit_price, oi.quantity, oi.amount "
+            + "FROM order_item oi JOIN orders o ON o.id = oi.order_id JOIN product p ON p.id = oi.product_id "
+            + "WHERE oi.seller_id = #{sellerId} AND o.status IN ('PAID', 'PARTIAL_REFUNDED', 'REFUNDED') "
+            + "ORDER BY oi.order_id DESC, oi.id DESC LIMIT #{limit} OFFSET #{offset}")
+    List<OrderDtos.SellerLine> findSellerLines(@Param("sellerId") long sellerId, @Param("limit") int limit,
+                                               @Param("offset") int offset);
 }

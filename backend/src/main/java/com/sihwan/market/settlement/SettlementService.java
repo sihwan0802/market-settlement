@@ -6,6 +6,10 @@ import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -66,21 +70,31 @@ public class SettlementService {
     private int doSettle(LocalDate date) {
         OffsetDateTime from = date.atStartOfDay(KST).toOffsetDateTime();
         OffsetDateTime to = date.plusDays(1).atStartOfDay(KST).toOffsetDateTime();
+        Map<Long, List<SettlementLine>> sales = group(mapper.findSales(from, to));
+        Map<Long, List<SettlementLine>> refunds = group(mapper.findRefunds(from, to));
+        Set<Long> sellerIds = new TreeSet<>(sales.keySet());
+        sellerIds.addAll(refunds.keySet());
+        Map<Long, BigDecimal> feeRates = mapper.findFeeRates().stream()
+                .collect(Collectors.toMap(SellerFee::id, SellerFee::feeRate));
         int created = 0;
-        for (long sellerId : mapper.findSellerIds(from, to)) {
-            if (Boolean.TRUE.equals(tx.execute(s -> settleSeller(sellerId, date, from, to)))) {
+        for (long sellerId : sellerIds) {
+            if (Boolean.TRUE.equals(tx.execute(s -> settleSeller(sellerId, date, feeRates.get(sellerId),
+                    sales.getOrDefault(sellerId, List.of()), refunds.getOrDefault(sellerId, List.of()))))) {
                 created++;
             }
         }
         return created;
     }
 
-    private boolean settleSeller(long sellerId, LocalDate date, OffsetDateTime from, OffsetDateTime to) {
-        List<SettlementLine> sales = mapper.findSales(sellerId, from, to);
-        List<SettlementLine> refunds = mapper.findRefunds(sellerId, from, to);
+    private static Map<Long, List<SettlementLine>> group(List<SellerLine> lines) {
+        return lines.stream().collect(Collectors.groupingBy(SellerLine::sellerId,
+                Collectors.mapping(l -> new SettlementLine(l.id(), l.amount()), Collectors.toList())));
+    }
+
+    private boolean settleSeller(long sellerId, LocalDate date, BigDecimal feeRate,
+                                 List<SettlementLine> sales, List<SettlementLine> refunds) {
         long gross = sales.stream().mapToLong(SettlementLine::amount).sum();
         long refund = refunds.stream().mapToLong(SettlementLine::amount).sum();
-        BigDecimal feeRate = mapper.findFeeRate(sellerId);
         long fee = BigDecimal.valueOf(gross - refund).multiply(feeRate)
                 .setScale(0, RoundingMode.FLOOR).longValueExact();
         Long id = mapper.insertIfAbsent(sellerId, date, gross, refund, feeRate, fee, gross - refund - fee);

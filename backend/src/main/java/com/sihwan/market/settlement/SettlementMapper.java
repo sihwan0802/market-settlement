@@ -11,27 +11,17 @@ import org.apache.ibatis.annotations.Update;
 @Mapper
 public interface SettlementMapper {
 
-    @Select("SELECT oi.seller_id FROM order_item oi JOIN payment p ON p.order_id = oi.order_id "
-            + "WHERE p.status IN ('PAID', 'CANCELED') AND p.paid_at >= #{from} AND p.paid_at < #{to} "
-            + "UNION "
-            + "SELECT oi.seller_id FROM refund r JOIN order_item oi ON oi.id = r.order_item_id "
-            + "WHERE r.status = 'COMPLETED' AND r.refunded_at >= #{from} AND r.refunded_at < #{to}")
-    List<Long> findSellerIds(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
+    // 하루치 판매와 환불을 판매자 구분 없이 한 번에 가져온다
+    @Select("SELECT oi.seller_id, oi.id, oi.amount FROM order_item oi JOIN payment p ON p.order_id = oi.order_id "
+            + "WHERE p.status IN ('PAID', 'CANCELED') AND p.paid_at >= #{from} AND p.paid_at < #{to} ORDER BY oi.id")
+    List<SellerLine> findSales(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
-    @Select("SELECT oi.id, oi.amount FROM order_item oi JOIN payment p ON p.order_id = oi.order_id "
-            + "WHERE oi.seller_id = #{sellerId} AND p.status IN ('PAID', 'CANCELED') "
-            + "AND p.paid_at >= #{from} AND p.paid_at < #{to} ORDER BY oi.id")
-    List<SettlementLine> findSales(@Param("sellerId") long sellerId, @Param("from") OffsetDateTime from,
-                                   @Param("to") OffsetDateTime to);
+    @Select("SELECT oi.seller_id, r.id, r.amount FROM refund r JOIN order_item oi ON oi.id = r.order_item_id "
+            + "WHERE r.status = 'COMPLETED' AND r.refunded_at >= #{from} AND r.refunded_at < #{to} ORDER BY r.id")
+    List<SellerLine> findRefunds(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 
-    @Select("SELECT r.id, r.amount FROM refund r JOIN order_item oi ON oi.id = r.order_item_id "
-            + "WHERE oi.seller_id = #{sellerId} AND r.status = 'COMPLETED' "
-            + "AND r.refunded_at >= #{from} AND r.refunded_at < #{to} ORDER BY r.id")
-    List<SettlementLine> findRefunds(@Param("sellerId") long sellerId, @Param("from") OffsetDateTime from,
-                                     @Param("to") OffsetDateTime to);
-
-    @Select("SELECT fee_rate FROM seller WHERE id = #{sellerId}")
-    BigDecimal findFeeRate(@Param("sellerId") long sellerId);
+    @Select("SELECT id, fee_rate FROM seller")
+    List<SellerFee> findFeeRates();
 
     // 이미 정산된 (판매자, 날짜)면 null을 돌려준다
     @Select("INSERT INTO settlement (seller_id, settle_date, gross_sales, refund_amount, fee_rate, fee_amount, net_amount) "
@@ -46,19 +36,23 @@ public interface SettlementMapper {
     void insertItem(@Param("settlementId") long settlementId, @Param("type") String type,
                     @Param("sourceId") long sourceId, @Param("amount") long amount);
 
-    // 저장된 정산을 원천(주문 항목, 환불)에서 다시 계산한 값과 대조해 어긋난 정산 id를 돌려준다
-    @Select("SELECT s.id FROM settlement s WHERE "
-            + "s.net_amount + s.fee_amount <> s.gross_sales - s.refund_amount "
-            + "OR (SELECT COALESCE(SUM(i.amount), 0) FROM settlement_item i WHERE i.settlement_id = s.id) "
-            + "   <> s.gross_sales - s.refund_amount "
-            + "OR s.gross_sales <> (SELECT COALESCE(SUM(oi.amount), 0) FROM order_item oi "
-            + "   JOIN payment p ON p.order_id = oi.order_id WHERE oi.seller_id = s.seller_id "
-            + "   AND p.status IN ('PAID', 'CANCELED') "
-            + "   AND (p.paid_at AT TIME ZONE 'Asia/Seoul')::date = s.settle_date) "
-            + "OR s.refund_amount <> (SELECT COALESCE(SUM(r.amount), 0) FROM refund r "
-            + "   JOIN order_item oi ON oi.id = r.order_item_id WHERE oi.seller_id = s.seller_id "
-            + "   AND r.status = 'COMPLETED' "
-            + "   AND (r.refunded_at AT TIME ZONE 'Asia/Seoul')::date = s.settle_date) "
+    // 저장된 정산을 원천(주문 항목, 환불)에서 다시 계산한 값과 대조해 어긋난 정산 id를 돌려준다.
+    // 정산마다 원천을 다시 훑지 않고 (판매자, 날짜)별 합계를 한 번만 만들어 붙인다
+    @Select("WITH sales AS (SELECT oi.seller_id, (p.paid_at AT TIME ZONE 'Asia/Seoul')::date AS d, SUM(oi.amount) AS amt "
+            + "  FROM order_item oi JOIN payment p ON p.order_id = oi.order_id "
+            + "  WHERE p.status IN ('PAID', 'CANCELED') GROUP BY 1, 2), "
+            + "refunds AS (SELECT oi.seller_id, (r.refunded_at AT TIME ZONE 'Asia/Seoul')::date AS d, SUM(r.amount) AS amt "
+            + "  FROM refund r JOIN order_item oi ON oi.id = r.order_item_id "
+            + "  WHERE r.status = 'COMPLETED' GROUP BY 1, 2), "
+            + "items AS (SELECT settlement_id, SUM(amount) AS amt FROM settlement_item GROUP BY 1) "
+            + "SELECT s.id FROM settlement s "
+            + "LEFT JOIN sales sa ON sa.seller_id = s.seller_id AND sa.d = s.settle_date "
+            + "LEFT JOIN refunds rf ON rf.seller_id = s.seller_id AND rf.d = s.settle_date "
+            + "LEFT JOIN items i ON i.settlement_id = s.id "
+            + "WHERE s.net_amount + s.fee_amount <> s.gross_sales - s.refund_amount "
+            + "OR COALESCE(i.amt, 0) <> s.gross_sales - s.refund_amount "
+            + "OR s.gross_sales <> COALESCE(sa.amt, 0) "
+            + "OR s.refund_amount <> COALESCE(rf.amt, 0) "
             + "ORDER BY s.id")
     List<Long> findInconsistentIds();
 

@@ -61,4 +61,17 @@ public interface SettlementMapper {
             + "   AND (r.refunded_at AT TIME ZONE 'Asia/Seoul')::date = s.settle_date) "
             + "ORDER BY s.id")
     List<Long> findInconsistentIds();
+
+    // 날짜는 KST 기준. 정산 행이 통째로 빠진 경우를 찾는다
+    @Select("SELECT a.seller_id, a.d AS date FROM ("
+            + " SELECT oi.seller_id, (p.paid_at AT TIME ZONE 'Asia/Seoul')::date AS d "
+            + " FROM order_item oi JOIN payment p ON p.order_id = oi.order_id "
+            + " WHERE p.status IN ('PAID', 'CANCELED') AND p.paid_at >= #{from} AND p.paid_at < #{to} "
+            + " UNION "
+            + " SELECT oi.seller_id, (r.refunded_at AT TIME ZONE 'Asia/Seoul')::date "
+            + " FROM refund r JOIN order_item oi ON oi.id = r.order_item_id "
+            + " WHERE r.status = 'COMPLETED' AND r.refunded_at >= #{from} AND r.refunded_at < #{to}"
+            + ") a WHERE NOT EXISTS (SELECT 1 FROM settlement s WHERE s.seller_id = a.seller_id AND s.settle_date = a.d) "
+            + "ORDER BY a.d, a.seller_id")
+    List<MissingSettlement> findMissing(@Param("from") OffsetDateTime from, @Param("to") OffsetDateTime to);
 }

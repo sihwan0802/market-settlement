@@ -30,6 +30,12 @@ public class AdminSettlementController {
         return new RunResponse(date, created, (System.nanoTime() - start) / 1_000_000);
     }
 
+    @GetMapping("/missing")
+    public List<MissingSettlement> missing(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+                                           @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to) {
+        return service.findMissing(from, to);
+    }
+
     @GetMapping("/inconsistent")
     public InconsistentResponse inconsistent() {
         long start = System.nanoTime();

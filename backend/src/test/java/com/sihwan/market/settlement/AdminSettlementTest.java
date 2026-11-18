@@ -60,5 +60,11 @@ class AdminSettlementTest {
         mvc.perform(get("/api/admin/settlements/inconsistent").header("Authorization", admin))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.settlementIds").isArray());
+        mvc.perform(get("/api/admin/settlements/missing").param("from", "2019-01-01").param("to", "2019-01-02")
+                        .header("Authorization", admin))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/admin/settlements/missing").param("from", "2019-01-01").param("to", "2019-01-02")
+                        .header("Authorization", buyer))
+                .andExpect(status().isForbidden());
     }
 }

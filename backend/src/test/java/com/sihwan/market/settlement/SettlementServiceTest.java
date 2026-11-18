@@ -1,6 +1,7 @@
 package com.sihwan.market.settlement;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.time.LocalDate;
@@ -12,7 +13,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
 @SpringBootTest
 @Import(com.sihwan.market.TestcontainersConfig.class)
@@ -24,6 +27,7 @@ class SettlementServiceTest {
 
     @Autowired SettlementService service;
     @Autowired JdbcTemplate jdbc;
+    @Autowired StringRedisTemplate redis;
 
     private long seller(String feeRate) {
         long member = jdbc.queryForObject("INSERT INTO member (email, password_hash, name, role) "
@@ -123,5 +127,59 @@ class SettlementServiceTest {
 
         List<Long> bad = service.findInconsistent();
         assertTrue(bad.containsAll(List.of(id1, id2, id3)));
+    }
+
+    @Test
+    void finds_seller_days_with_activity_but_no_settlement() {
+        LocalDate d1 = LocalDate.of(2020, 3, 10);
+        LocalDate d2 = LocalDate.of(2020, 3, 11);
+        long s1 = seller("0.1000");
+        long s2 = seller("0.1000");
+        long[] i1 = paidItem(s1, product(s1), 10000, "2020-03-10 10:00:00+09");
+        paidItem(s2, product(s2), 8000, "2020-03-10 11:00:00+09");
+        refund(i1, 1000, "2020-03-11 09:00:00+09");     // s1은 11일에 환불만 있음
+
+        assertEquals(List.of(new MissingSettlement(s1, d1), new MissingSettlement(s2, d1), new MissingSettlement(s1, d2)),
+                service.findMissing(d1, d2).stream().filter(m -> m.sellerId() == s1 || m.sellerId() == s2).toList());
+
+        service.settle(d1);                               // 10일만 정산
+        assertEquals(List.of(new MissingSettlement(s1, d2)),
+                service.findMissing(d1, d2).stream().filter(m -> m.sellerId() == s1 || m.sellerId() == s2).toList());
+
+        service.settle(d2);
+        assertTrue(service.findMissing(d1, d2).stream().noneMatch(m -> m.sellerId() == s1 || m.sellerId() == s2));
+    }
+
+    @Test
+    void deleted_settlement_row_is_reported_as_missing() {
+        LocalDate day = LocalDate.of(2020, 3, 20);
+        long s = seller("0.1000");
+        paidItem(s, product(s), 5000, "2020-03-20 10:00:00+09");
+        service.settle(day);
+        assertTrue(service.findMissing(day, day).stream().noneMatch(m -> m.sellerId() == s));
+
+        long id = ((Number) settlement(s, day).get("id")).longValue();
+        jdbc.update("DELETE FROM settlement_item WHERE settlement_id = ?", id);
+        jdbc.update("DELETE FROM settlement WHERE id = ?", id);
+
+        assertEquals(List.of(new MissingSettlement(s, day)),
+                service.findMissing(day, day).stream().filter(m -> m.sellerId() == s).toList());
+        assertEquals(1, service.settle(day));           // 다시 정산하면 복구된다
+    }
+
+    @Test
+    void same_date_cannot_run_twice_at_once_and_lock_is_released_after() {
+        LocalDate day = LocalDate.of(2020, 3, 25);
+        long s = seller("0.1000");
+        paidItem(s, product(s), 5000, "2020-03-25 10:00:00+09");
+
+        redis.opsForValue().set("lock:settlement:" + day, "other-server");   // 다른 서버가 실행 중
+        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> service.settle(day));
+        assertEquals(409, e.getStatusCode().value());
+        assertEquals("other-server", redis.opsForValue().get("lock:settlement:" + day)); // 남의 락은 건드리지 않는다
+
+        redis.delete("lock:settlement:" + day);
+        assertEquals(1, service.settle(day));
+        assertEquals(null, redis.opsForValue().get("lock:settlement:" + day));          // 끝나면 풀린다
     }
 }

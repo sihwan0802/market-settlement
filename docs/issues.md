@@ -4,12 +4,16 @@
 
 ## M1. 1주차: 도메인·API·Compose
 - 도메인 정의와 ERD 작성 | docs
-- AS-IS 인터뷰 정리, TO-BE 작성 | docs
+- AS-IS 리서치 정리, TO-BE 작성 | docs
 - Spring Boot + MyBatis + PostgreSQL 프로젝트 초기화 | backend
 - Docker Compose (app, PostgreSQL, Redis) | infra
 - 회원/판매자 가입·로그인 (JWT) | backend
 - 상품·재고 CRUD | backend
 - 주문 생성 API | backend
+- 주문 조회 API (내 주문, 판매자 주문) | backend
+- 공통 에러 응답 형식 정리 | backend
+- Testcontainers로 테스트 DB 분리 | backend
+- 회원 탈퇴(소프트 삭제)와 비밀번호 변경 | backend
 
 ## M2. 2주차: 결제·정산·Redis·성능 측정
 - PortOne 테스트 결제 연동 | backend
@@ -21,6 +25,11 @@
 - 상품 조회 Redis 캐시 | backend
 - 선착순 구매 Redis 재고 선점 | backend
 - 요청 제한 (Redis) | backend
+- 환불 REQUESTED 복구 배치 | backend
+- 만료된 주문에 들어온 결제 자동 취소 | backend
+- 정산 누락 검사와 중복 실행 방지 | backend
+- 정산·정합성 쿼리 성능 개선과 전후 측정 | perf
+- 공개 전 점검 | docs
 
 ## M3. 3주차: 프론트·배포·모니터링·문서
 - React 최소 화면 (상품, 주문, 정산 조회) | frontend
@@ -33,6 +42,7 @@
 - 개선 전후 측정과 `docs/performance.md` | perf
 - ERD·아키텍처 그림, README 정리 | docs
 - 노션 정리, 회고 | docs
+- PortOne 웹훅 수신 (결제 상태 동기화) | backend
 
 ## 별도 (이 저장소 아님): techconf 빠른 보강
 - 커넥션 풀 조정 후 k6 재측정 (전후 비교)

@@ -24,4 +24,13 @@ public interface PaymentMapper {
 
     @Update("UPDATE payment SET status = 'CANCELED' WHERE id = #{id}")
     void markCanceled(@Param("id") long id);
+
+    // 결제할 수 없는 주문에 들어온 결제. 취소를 요청하기 전에 기록한다. paid_at이 없어 정산에 잡히지 않는다
+    @Update("INSERT INTO payment (order_id, portone_payment_id, idempotency_key, amount, status) "
+            + "VALUES (#{orderId}, #{paymentId}, #{paymentId}, #{amount}, 'CANCEL_REQUESTED')")
+    void insertCancelRequested(@Param("orderId") long orderId, @Param("paymentId") String paymentId,
+                               @Param("amount") long amount);
+
+    @Select("SELECT paid_at IS NOT NULL FROM payment WHERE id = #{id}")
+    boolean hasPaidAt(@Param("id") long id);
 }

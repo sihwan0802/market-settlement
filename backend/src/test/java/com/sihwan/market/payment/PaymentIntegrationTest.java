@@ -1,6 +1,12 @@
 package com.sihwan.market.payment;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -13,10 +19,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.server.ResponseStatusException;
 import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
@@ -29,6 +37,11 @@ class PaymentIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired OrderExpiryService expiry;
     @MockitoBean PortOneClient portOne;
+
+    @org.junit.jupiter.api.BeforeEach
+    void resetMock() {
+        reset(portOne);
+    }
 
     private String signupAndLogin(String role) throws Exception {
         String email = UUID.randomUUID() + "@test.com";
@@ -159,6 +172,93 @@ class PaymentIntegrationTest {
         assertEquals("CANCELED", orderStatus(unpaid));
         assertEquals("PAID", orderStatus(paid));
         assertEquals(8, stock(product));
+        portOneReturns("order-" + unpaid + "-late", "PAID", 6000, "KRW");
         assertEquals(409, pay(buyer, unpaid, "order-" + unpaid + "-late"));
+        assertEquals("CANCELED", orderStatus(unpaid));
+    }
+
+    private String paymentStatus(String paymentId) {
+        return jdbc.queryForObject("SELECT status FROM payment WHERE portone_payment_id = ?", String.class, paymentId);
+    }
+
+    private Object paidAt(String paymentId) {
+        return jdbc.queryForObject("SELECT paid_at FROM payment WHERE portone_payment_id = ?", Object.class, paymentId);
+    }
+
+    private long expiredOrder(String buyer, long product, int qty) throws Exception {
+        long id = order(buyer, product, qty);
+        jdbc.update("UPDATE orders SET ordered_at = now() - interval '2 hours' WHERE id = ?", id);
+        expiry.expire(30);
+        assertEquals("CANCELED", orderStatus(id));
+        return id;
+    }
+
+    @Test
+    void late_payment_on_expired_order_is_fully_canceled_and_recorded() throws Exception {
+        String buyer = signupAndLogin("BUYER");
+        long product = createProduct(signupAndLogin("SELLER"), 2000, 10);
+        long orderId = expiredOrder(buyer, product, 3);
+        String paymentId = "order-" + orderId + "-late";
+        portOneReturns(paymentId, "PAID", 6000, "KRW");
+
+        assertEquals(409, pay(buyer, orderId, paymentId));
+        verify(portOne).cancel(org.mockito.ArgumentMatchers.eq(paymentId), org.mockito.ArgumentMatchers.eq(6000L), anyString());
+        assertEquals("CANCELED", paymentStatus(paymentId));
+        assertEquals(null, paidAt(paymentId)); // 정산에 잡히지 않는다
+        assertEquals("CANCELED", orderStatus(orderId));
+        assertEquals(10, stock(product));
+
+        // 같은 결제 번호로 다시 와도 취소를 또 요청하지 않는다
+        assertEquals(409, pay(buyer, orderId, paymentId));
+        verify(portOne, times(1)).cancel(anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void failed_auto_cancel_is_retried_with_same_payment_id() throws Exception {
+        String buyer = signupAndLogin("BUYER");
+        long product = createProduct(signupAndLogin("SELLER"), 1000, 10);
+        long orderId = expiredOrder(buyer, product, 1);
+        String paymentId = "order-" + orderId + "-late";
+        portOneReturns(paymentId, "PAID", 1000, "KRW");
+
+        doThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY, "x"))
+                .when(portOne).cancel(anyString(), anyLong(), anyString());
+        assertEquals(502, pay(buyer, orderId, paymentId));
+        assertEquals("CANCEL_REQUESTED", paymentStatus(paymentId));
+
+        org.mockito.Mockito.doNothing().when(portOne).cancel(anyString(), anyLong(), anyString());
+        assertEquals(409, pay(buyer, orderId, paymentId));
+        assertEquals("CANCELED", paymentStatus(paymentId));
+        verify(portOne, times(2)).cancel(anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void second_payment_on_already_paid_order_is_canceled() throws Exception {
+        String buyer = signupAndLogin("BUYER");
+        long product = createProduct(signupAndLogin("SELLER"), 3000, 10);
+        long orderId = order(buyer, product, 1);
+        portOneReturns("order-" + orderId + "-first", "PAID", 3000, "KRW");
+        assertEquals(200, pay(buyer, orderId, "order-" + orderId + "-first"));
+
+        portOneReturns("order-" + orderId + "-second", "PAID", 3000, "KRW");
+        assertEquals(409, pay(buyer, orderId, "order-" + orderId + "-second"));
+
+        assertEquals("PAID", orderStatus(orderId));
+        assertEquals("PAID", paymentStatus("order-" + orderId + "-first"));
+        assertEquals("CANCELED", paymentStatus("order-" + orderId + "-second"));
+        verify(portOne).cancel(org.mockito.ArgumentMatchers.eq("order-" + orderId + "-second"),
+                org.mockito.ArgumentMatchers.eq(3000L), anyString());
+    }
+
+    @Test
+    void unpaid_status_on_expired_order_is_not_canceled() throws Exception {
+        String buyer = signupAndLogin("BUYER");
+        long product = createProduct(signupAndLogin("SELLER"), 1000, 10);
+        long orderId = expiredOrder(buyer, product, 1);
+        portOneReturns("order-" + orderId + "-ready", "READY", 1000, "KRW");
+
+        assertEquals(409, pay(buyer, orderId, "order-" + orderId + "-ready"));
+        verify(portOne, times(0)).cancel(anyString(), anyLong(), anyString());
+        assertEquals(0, paymentCount(orderId));
     }
 }

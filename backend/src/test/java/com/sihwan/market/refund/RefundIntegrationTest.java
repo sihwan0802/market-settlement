@@ -38,6 +38,7 @@ class RefundIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired JdbcTemplate jdbc;
     @MockitoBean PortOneClient portOne;
+    @Autowired RefundRecoveryService recovery;
 
     @BeforeEach
     void resetMock() {
@@ -151,7 +152,7 @@ class RefundIntegrationTest {
     }
 
     @Test
-    void failed_cancel_leaves_order_untouched_and_can_be_retried() throws Exception {
+    void rejected_cancel_leaves_order_untouched_and_can_be_retried() throws Exception {
         String seller = signupAndLogin("SELLER");
         String buyer = signupAndLogin("BUYER");
         long a = createProduct(seller, 5000, 10);
@@ -159,9 +160,9 @@ class RefundIntegrationTest {
         long orderId = paidOrder(buyer, a, b);
         long item = itemId(orderId, a);
 
-        doThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY, "x"))
+        doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "x"))
                 .when(portOne).cancel(anyString(), anyLong(), anyString());
-        assertEquals(502, refund(buyer, orderId, item));
+        assertEquals(409, refund(buyer, orderId, item));
         assertEquals("PAID", orderStatus(orderId));
         assertEquals(8, stock(a));
         assertEquals(1, refundCount(orderId, "FAILED"));
@@ -190,5 +191,94 @@ class RefundIntegrationTest {
         assertEquals(404, refund(signupAndLogin("BUYER"), paid, itemId(paid, a)));
         assertEquals(404, refund(buyer, paid, itemId(unpaid, a)));
         assertEquals("PAID", orderStatus(paid));
+    }
+
+    // 취소 요청에 응답을 못 받은 상황(시간 초과)을 만든다. 환불이 REQUESTED로 남는다.
+    private long stuckRefund(String buyer, long orderId, long itemId) throws Exception {
+        doThrow(new ResponseStatusException(HttpStatus.BAD_GATEWAY, "x"))
+                .when(portOne).cancel(anyString(), anyLong(), anyString());
+        assertEquals(502, refund(buyer, orderId, itemId));
+        reset(portOne);
+        long refundId = jdbc.queryForObject("SELECT r.id FROM refund r WHERE r.order_item_id = ?",
+                Long.class, itemId);
+        jdbc.update("UPDATE refund SET requested_at = now() - interval '1 hour' WHERE id = ?", refundId);
+        return refundId;
+    }
+
+    private void portOneShows(long orderId, long total, long cancelled) {
+        when(portOne.get("order-" + orderId + "-pay"))
+                .thenReturn(new PortOnePayment("PARTIAL_CANCELLED", new PortOnePayment.Amount(total, cancelled), "KRW"));
+    }
+
+    private String refundStatus(long refundId) {
+        return jdbc.queryForObject("SELECT status FROM refund WHERE id = ?", String.class, refundId);
+    }
+
+    @Test
+    void timeout_keeps_requested_and_recovery_completes_it_once() throws Exception {
+        String seller = signupAndLogin("SELLER");
+        String buyer = signupAndLogin("BUYER");
+        long a = createProduct(seller, 5000, 10);
+        long b = createProduct(seller, 3000, 10);
+        long orderId = paidOrder(buyer, a, b);
+        long refundId = stuckRefund(buyer, orderId, itemId(orderId, a));
+        assertEquals("REQUESTED", refundStatus(refundId));
+        assertEquals(8, stock(a));
+        // 같은 항목을 다시 요청해도 막힌다 (이중 환불 방지)
+        assertEquals(409, refund(buyer, orderId, itemId(orderId, a)));
+
+        portOneShows(orderId, 13000, 10000);
+        assertEquals(1, recovery.recover(10));
+
+        assertEquals("COMPLETED", refundStatus(refundId));
+        assertEquals("PARTIAL_REFUNDED", orderStatus(orderId));
+        assertEquals(10, stock(a));
+        // 한 번 더 돌려도 재고가 늘지 않는다
+        assertEquals(0, recovery.recover(10));
+        assertEquals(10, stock(a));
+    }
+
+    @Test
+    void recovery_marks_failed_when_portone_did_not_cancel_and_item_can_be_retried() throws Exception {
+        String seller = signupAndLogin("SELLER");
+        String buyer = signupAndLogin("BUYER");
+        long a = createProduct(seller, 5000, 10);
+        long b = createProduct(seller, 3000, 10);
+        long orderId = paidOrder(buyer, a, b);
+        long refundId = stuckRefund(buyer, orderId, itemId(orderId, a));
+
+        portOneShows(orderId, 13000, 0);
+        assertEquals(1, recovery.recover(10));
+
+        assertEquals("FAILED", refundStatus(refundId));
+        assertEquals("PAID", orderStatus(orderId));
+        assertEquals(8, stock(a));
+        assertEquals(200, refund(buyer, orderId, itemId(orderId, a)));
+        assertEquals(10, stock(a));
+    }
+
+    @Test
+    void recovery_skips_recent_requests_and_handles_several_refunds_of_one_payment() throws Exception {
+        String seller = signupAndLogin("SELLER");
+        String buyer = signupAndLogin("BUYER");
+        long a = createProduct(seller, 5000, 10);
+        long b = createProduct(seller, 3000, 10);
+        long orderId = paidOrder(buyer, a, b);
+        long first = stuckRefund(buyer, orderId, itemId(orderId, a));
+        long second = stuckRefund(buyer, orderId, itemId(orderId, b));
+
+        // 방금 요청한 환불은 건드리지 않는다
+        jdbc.update("UPDATE refund SET requested_at = now() WHERE id = ?", second);
+        portOneShows(orderId, 13000, 10000);
+        assertEquals(1, recovery.recover(10));
+        assertEquals("COMPLETED", refundStatus(first));
+        assertEquals("REQUESTED", refundStatus(second));
+
+        // 둘 다 오래됐고 PortOne에는 첫 번째 금액만 취소돼 있으면 두 번째는 실패 처리
+        jdbc.update("UPDATE refund SET requested_at = now() - interval '1 hour' WHERE id = ?", second);
+        assertEquals(1, recovery.recover(10));
+        assertEquals("FAILED", refundStatus(second));
+        assertEquals(10, stock(a));
+        assertEquals(9, stock(b));
     }
 }

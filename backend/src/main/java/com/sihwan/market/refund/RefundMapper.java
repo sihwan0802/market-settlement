@@ -1,5 +1,6 @@
 package com.sihwan.market.refund;
 
+import java.util.List;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
@@ -22,4 +23,15 @@ public interface RefundMapper {
     @Select("SELECT count(*) FROM refund r JOIN payment p ON p.id = r.payment_id "
             + "WHERE p.order_id = #{orderId} AND r.status = 'COMPLETED'")
     int countCompleted(@Param("orderId") long orderId);
+
+    record Stuck(long id, long paymentId, long orderItemId, long amount, long orderId, String portonePaymentId) {}
+
+    @Select("SELECT r.id, r.payment_id, r.order_item_id, r.amount, p.order_id, p.portone_payment_id "
+            + "FROM refund r JOIN payment p ON p.id = r.payment_id "
+            + "WHERE r.status = 'REQUESTED' AND r.requested_at < now() - make_interval(mins => #{minutes}) "
+            + "ORDER BY r.payment_id, r.id")
+    List<Stuck> findStuck(@Param("minutes") int minutes);
+
+    @Select("SELECT COALESCE(sum(amount), 0) FROM refund WHERE payment_id = #{paymentId} AND status = 'COMPLETED'")
+    long sumCompleted(@Param("paymentId") long paymentId);
 }

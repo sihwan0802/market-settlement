@@ -59,24 +59,38 @@ public class RefundService {
 
         try {
             portOne.cancel(payment.portonePaymentId(), item.amount(), reason);
-        } catch (RuntimeException e) {
-            refunds.markFailed(refundId);
+        } catch (ResponseStatusException e) {
+            // 거절(409)은 취소되지 않은 것이 확실하다. 서버 오류, 시간 초과는 취소됐는지 모르므로
+            // REQUESTED로 두고 복구 배치가 PortOne 상태를 보고 정리한다 (실패로 적으면 재시도로 이중 환불될 수 있다)
+            if (e.getStatusCode() == HttpStatus.CONFLICT) {
+                refunds.markFailed(refundId);
+            }
             throw e;
         }
 
-        String orderStatus = tx.execute(s -> {
+        String orderStatus = complete(refundId, orderId, payment.id(), item);
+        if (orderStatus == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 환불 처리된 항목입니다");
+        }
+        return new RefundResponse(refundId, orderStatus);
+    }
+
+    /** 취소가 확인된 환불을 반영한다. 이미 처리된 환불이면 아무것도 하지 않고 null (재고가 두 번 늘지 않게). */
+    String complete(long refundId, long orderId, long paymentId, OrderItem item) {
+        return tx.execute(s -> {
             orders.lockById(orderId);
-            refunds.markCompleted(refundId);
+            if (refunds.markCompleted(refundId) == 0) {
+                return null;
+            }
             orders.increaseStock(item.productId(), item.quantity());
             reservation.invalidateAfterCommit(item.productId());
             boolean all = refunds.countCompleted(orderId) >= orders.countItems(orderId);
             String status = all ? "REFUNDED" : "PARTIAL_REFUNDED";
             orders.updateRefundStatus(orderId, status);
             if (all) {
-                payments.markCanceled(payment.id());
+                payments.markCanceled(paymentId);
             }
             return status;
         });
-        return new RefundResponse(refundId, orderStatus);
     }
 }

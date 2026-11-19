@@ -1,6 +1,7 @@
 package com.sihwan.market.auth;
 
 import com.sihwan.market.auth.AuthDtos.LoginRequest;
+import com.sihwan.market.auth.AuthDtos.PasswordChangeRequest;
 import com.sihwan.market.auth.AuthDtos.SignupRequest;
 import com.sihwan.market.auth.AuthDtos.TokenResponse;
 import com.sihwan.market.member.Member;
@@ -48,6 +49,31 @@ public class AuthService {
         } catch (DuplicateKeyException e) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "이미 가입된 이메일입니다");
         }
+    }
+
+    @Transactional
+    public void changePassword(long memberId, PasswordChangeRequest req) {
+        Member m = verifiedMember(memberId, req.currentPassword());
+        if (req.currentPassword().equals(req.newPassword())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "새 비밀번호가 기존과 같습니다");
+        }
+        members.updatePassword(m.id(), encoder.encode(req.newPassword()));
+    }
+
+    @Transactional
+    public void withdraw(long memberId, String password) {
+        Member m = verifiedMember(memberId, password);
+        // 미정산 금액과 진행 중 주문을 확인하는 판매자 탈퇴 규칙은 아직 없어서 막아 둔다
+        if ("SELLER".equals(m.role()) || "ADMIN".equals(m.role())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "판매자와 관리자는 탈퇴할 수 없습니다");
+        }
+        members.withdraw(m.id());
+    }
+
+    private Member verifiedMember(long memberId, String password) {
+        return members.findActiveById(memberId)
+                .filter(found -> encoder.matches(password, found.passwordHash()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "비밀번호가 올바르지 않습니다"));
     }
 
     public TokenResponse login(LoginRequest req) {

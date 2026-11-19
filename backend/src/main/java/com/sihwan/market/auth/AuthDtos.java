@@ -17,5 +17,10 @@ public final class AuthDtos {
 
     public record LoginRequest(@NotBlank String email, @NotBlank String password) {}
 
+    public record PasswordChangeRequest(@NotBlank String currentPassword,
+                                        @NotBlank @Size(min = 8, max = 72) String newPassword) {}
+
+    public record WithdrawRequest(@NotBlank String password) {}
+
     public record TokenResponse(String accessToken) {}
 }

@@ -20,14 +20,16 @@ sudo usermod -aG docker ubuntu     # 적용하려면 로그아웃 후 다시 접
 mkdir -p ~/market/deploy
 ```
 
-## 2. 이미지와 설정 올리기 (내 PC에서, 배포할 때마다)
-```bash
-docker build -t market-app backend
-docker save market-app | gzip | ssh -i ~/.ssh/market-key.pem ubuntu@<탄력적IP> 'gunzip | docker load'
-scp -i ~/.ssh/market-key.pem docker-compose.prod.yml ubuntu@<탄력적IP>:~/market/docker-compose.yml
-scp -i ~/.ssh/market-key.pem deploy/Caddyfile ubuntu@<탄력적IP>:~/market/deploy/
+## 2. 이미지와 설정 올리기 (내 PC의 cmd에서, 배포할 때마다)
+PowerShell은 바이너리 파이프를 깨뜨리고 `curl`이 다른 명령으로 바뀌므로 cmd를 쓴다.
 ```
-자동 배포(#20)에서 레지스트리를 쓰면 이 단계는 필요 없다.
+cd C:UserschasiIdeaProjectsmarket-settlement
+docker build -t market-app backend
+docker save market-app | ssh -C -i C:Userschasi.sshmarket_key.pem ubuntu@<탄력적IP> "docker load"
+scp -i C:Userschasi.sshmarket_key.pem docker-compose.prod.yml ubuntu@<탄력적IP>:~/market/docker-compose.yml
+scp -i C:Userschasi.sshmarket_key.pem deployCaddyfile ubuntu@<탄력적IP>:~/market/deploy/
+```
+`-C`는 전송 압축. 자동 배포(#20)에서 레지스트리를 쓰면 이 단계는 필요 없다.
 
 ## 3. 비밀값 (서버에서, 처음 한 번)
 ```bash
@@ -48,7 +50,12 @@ docker compose up -d
 docker compose ps
 curl -s localhost/actuator/health
 ```
-내 PC에서는 `http://<탄력적IP>/actuator/health`가 `{"status":"UP"...}`이면 성공이다.
+내 PC 브라우저에서 `http://<탄력적IP>/actuator/health`가 `{"status":"UP"...}`이면 성공이다. 이 주소가 열리면 보안 그룹 80번도 확인된 것이다.
+
+서버 안의 `curl localhost/...`는 서버에서만 쓴다. PC의 PowerShell에서는 `curl`이 `Invoke-WebRequest`다.
 
 ## 5. 정리
 인스턴스를 지울 때는 탄력적 IP도 릴리스한다(연결 안 된 IP는 요금 발생).
+
+## 재배포
+앱 코드가 바뀌면 2단계로 이미지를 다시 올리고 서버에서 `cd ~/market && docker compose up -d`. DB 볼륨(`pgdata`)은 유지된다.

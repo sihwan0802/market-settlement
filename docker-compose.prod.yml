@@ -1,0 +1,44 @@
+# 운영(EC2)용. 개발용 docker-compose.yml과 달리 DB, Redis 포트를 밖에 열지 않고 80번만 연다
+# 비밀값은 같은 폴더의 .env 에서 읽는다 (.env.prod.example 참고)
+services:
+  caddy:
+    image: caddy:2
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [app]
+    restart: unless-stopped
+  app:
+    image: market-app:latest
+    mem_limit: 900m
+    environment:
+      DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/market}
+      DB_USER: ${DB_USER:-market}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      REDIS_HOST: redis
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      PORTONE_API_SECRET: ${PORTONE_API_SECRET:-}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+    restart: unless-stopped
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: market
+      POSTGRES_USER: ${DB_USER:-market}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U market -d market"]
+      interval: 3s
+      retries: 10
+    restart: unless-stopped
+  redis:
+    image: redis:7
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
+    restart: unless-stopped
+volumes:
+  pgdata:
+  caddy_data:

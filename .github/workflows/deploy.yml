@@ -31,7 +31,7 @@ jobs:
       - name: 이미지 빌드와 푸시
         run: |
           IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}
-          docker build -t $IMAGE:latest -t $IMAGE:${{ github.event.workflow_run.head_sha || github.sha }} backend
+          docker build --label org.opencontainers.image.source=https://github.com/${{ github.repository }} -t $IMAGE:latest -t $IMAGE:${{ github.event.workflow_run.head_sha || github.sha }} backend
           docker push --all-tags $IMAGE
 
       - uses: aws-actions/configure-aws-credentials@v4

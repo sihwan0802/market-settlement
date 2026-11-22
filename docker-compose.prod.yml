@@ -10,7 +10,7 @@ services:
     depends_on: [app]
     restart: unless-stopped
   app:
-    image: market-app:latest
+    image: ghcr.io/sihwan0802/market-settlement:latest
     mem_limit: 900m
     environment:
       DB_URL: ${DB_URL:-jdbc:postgresql://postgres:5432/market}

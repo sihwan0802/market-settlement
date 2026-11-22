@@ -7,7 +7,7 @@
 
 ## 1. 서버 준비 (서버에서, 처음 한 번)
 ```bash
-ssh -i ~/.ssh/market-key.pem ubuntu@<탄력적IP>
+ssh -i ~/.ssh/market_key.pem ubuntu@<탄력적IP>
 
 # 메모리 여유를 위해 스왑 2GB
 sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
@@ -20,16 +20,56 @@ sudo usermod -aG docker ubuntu     # 적용하려면 로그아웃 후 다시 접
 mkdir -p ~/market/deploy
 ```
 
-## 2. 이미지와 설정 올리기 (내 PC의 cmd에서, 배포할 때마다)
+## 2. 자동 배포 (GitHub Actions, SSM)
+main에 머지하면 CI가 통과한 뒤 `.github/workflows/deploy.yml`이 이미지를 빌드해 GHCR(`ghcr.io/sihwan0802/market-settlement`)에 올리고, SSM Run Command로 서버에서 `docker compose pull && up -d`와 health 확인을 한다. 22번 포트도 저장된 서버 키도 필요 없다. compose와 Caddyfile도 이때 같이 갱신된다.
+
+한 번만 하는 설정 (AWS 콘솔):
+1. 역할 `market-ec2-ssm` 생성 (EC2용, `AmazonSSMManagedInstanceCore`)해서 인스턴스에 연결. Systems Manager → Fleet Manager에서 Online 확인
+2. IAM → ID 공급자: OpenID Connect, URL `https://token.actions.githubusercontent.com`, 대상 `sts.amazonaws.com`
+3. 역할 `market-github-deploy` 생성 (웹 ID, 위 공급자). 신뢰 정책은 이 저장소의 main만 허용:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Federated": "arn:aws:iam::<계정ID>:oidc-provider/token.actions.githubusercontent.com"},
+    "Action": "sts:AssumeRoleWithWebIdentity",
+    "Condition": {
+      "StringEquals": {
+        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+        "token.actions.githubusercontent.com:sub": "repo:sihwan0802/market-settlement:ref:refs/heads/main"
+      }
+    }
+  }]
+}
+```
+   권한 정책(인라인): 이 인스턴스에 명령 보내기와 결과 조회만
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {"Effect": "Allow", "Action": "ssm:SendCommand",
+     "Resource": ["arn:aws:ec2:ap-northeast-2:<계정ID>:instance/<인스턴스ID>",
+                  "arn:aws:ssm:ap-northeast-2::document/AWS-RunShellScript"]},
+    {"Effect": "Allow", "Action": ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"], "Resource": "*"}
+  ]
+}
+```
+4. GitHub 저장소 Settings → Secrets → Actions에 `AWS_DEPLOY_ROLE_ARN`(3번 역할 ARN), `EC2_INSTANCE_ID` 등록
+5. 첫 배포가 이미지를 올린 뒤, GitHub 프로필 → Packages → 이 이미지 → Settings에서 공개(Public)로 변경. 서버에서 로그인 없이 받기 위해서이고, 이미지에는 비밀값이 없다(비밀값은 서버 `.env`)
+
+배포 실패 시 Actions 로그에 서버 출력과 앱 로그가 남고 GitHub가 실패 메일을 보낸다. 되돌릴 때는 이전 커밋을 다시 머지하거나 서버에서 `ghcr.io/...:<커밋SHA>` 태그로 `docker compose up -d`.
+
+### 수동 배포 (자동 배포가 막혔을 때, 내 PC의 cmd에서)
 PowerShell은 바이너리 파이프를 깨뜨리고 `curl`이 다른 명령으로 바뀌므로 cmd를 쓴다.
 ```
-cd C:UserschasiIdeaProjectsmarket-settlement
-docker build -t market-app backend
-docker save market-app | ssh -C -i C:Userschasi.sshmarket_key.pem ubuntu@<탄력적IP> "docker load"
-scp -i C:Userschasi.sshmarket_key.pem docker-compose.prod.yml ubuntu@<탄력적IP>:~/market/docker-compose.yml
-scp -i C:Userschasi.sshmarket_key.pem deployCaddyfile ubuntu@<탄력적IP>:~/market/deploy/
+cd C:\Users\chasi\IdeaProjects\market-settlement
+docker build -t ghcr.io/sihwan0802/market-settlement:latest backend
+docker save ghcr.io/sihwan0802/market-settlement:latest | ssh -C -i C:\Users\chasi\.ssh\market_key.pem ubuntu@<탄력적IP> "docker load"
+scp -i C:\Users\chasi\.ssh\market_key.pem docker-compose.prod.yml ubuntu@<탄력적IP>:~/market/docker-compose.yml
+scp -i C:\Users\chasi\.ssh\market_key.pem deploy\Caddyfile ubuntu@<탄력적IP>:~/market/deploy/
 ```
-`-C`는 전송 압축. 자동 배포(#20)에서 레지스트리를 쓰면 이 단계는 필요 없다.
+이후 서버에서 `cd ~/market && docker compose up -d --pull never`.
 
 ## 3. 비밀값 (서버에서, 처음 한 번)
 ```bash
@@ -58,4 +98,4 @@ curl -s localhost/actuator/health
 인스턴스를 지울 때는 탄력적 IP도 릴리스한다(연결 안 된 IP는 요금 발생).
 
 ## 재배포
-앱 코드가 바뀌면 2단계로 이미지를 다시 올리고 서버에서 `cd ~/market && docker compose up -d`. DB 볼륨(`pgdata`)은 유지된다.
+main에 머지하면 2단계의 자동 배포가 한다. DB 볼륨(`pgdata`)은 유지된다.

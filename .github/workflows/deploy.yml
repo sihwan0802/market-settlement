@@ -45,9 +45,12 @@ jobs:
       - name: 서버에 배포하고 health 확인
         env:
           INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           {
             echo "set -e"
+            # 패키지가 비공개여도 받도록 잡 동안만 유효한 토큰으로 로그인 (끝나면 remote-deploy.sh가 로그아웃)
+            echo "echo $GH_TOKEN | docker login ghcr.io -u ${{ github.actor }} --password-stdin"
             echo "echo $(base64 -w0 docker-compose.prod.yml) | base64 -d > /home/ubuntu/market/docker-compose.yml"
             echo "echo $(base64 -w0 deploy/Caddyfile) | base64 -d > /home/ubuntu/market/deploy/Caddyfile"
             cat deploy/remote-deploy.sh

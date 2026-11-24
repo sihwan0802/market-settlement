@@ -12,7 +12,10 @@ concurrency: deploy
 
 jobs:
   deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # 포크 PR의 브랜치 이름이 main이어도 걸리지 않게 push로 시작한 CI만 받는다 (공개 저장소 대비)
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     permissions:
       contents: read

@@ -52,7 +52,8 @@ jobs:
             # 패키지가 비공개여도 받도록 잡 동안만 유효한 토큰으로 로그인 (끝나면 remote-deploy.sh가 로그아웃)
             echo "echo $GH_TOKEN | docker login ghcr.io -u ${{ github.actor }} --password-stdin"
             echo "echo $(base64 -w0 docker-compose.prod.yml) | base64 -d > /home/ubuntu/market/docker-compose.yml"
-            echo "echo $(base64 -w0 deploy/Caddyfile) | base64 -d > /home/ubuntu/market/deploy/Caddyfile"
+            # deploy 폴더(Caddyfile, Prometheus, Grafana 설정)를 통째로 갱신
+            echo "echo $(tar -czf - deploy | base64 -w0) | base64 -d | tar -xzf - --no-same-owner -C /home/ubuntu/market"
             cat deploy/remote-deploy.sh
           } > script.sh
           jq -n --rawfile s script.sh '{commands: [$s]}' > params.json

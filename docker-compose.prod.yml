@@ -7,7 +7,7 @@ services:
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
-    depends_on: [app]
+    depends_on: [app, grafana]
     restart: unless-stopped
   app:
     image: ghcr.io/sihwan0802/market-settlement:latest
@@ -39,6 +39,31 @@ services:
     image: redis:7
     command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "volatile-lru"]
     restart: unless-stopped
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=3d"]
+    mem_limit: 256m
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prom_data:/prometheus
+    depends_on: [app]
+    restart: unless-stopped
+  grafana:
+    image: grafana/grafana:12.1.0
+    mem_limit: 300m
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on: [prometheus]
+    restart: unless-stopped
 volumes:
   pgdata:
   caddy_data:
+  prom_data:
+  grafana_data:

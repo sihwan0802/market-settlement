@@ -1,5 +1,7 @@
 package com.sihwan.market.settlement;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
@@ -26,9 +28,11 @@ public class SettlementService {
     private final SettlementMapper mapper;
     private final TransactionTemplate tx;
     private final SettlementLock lock;
+    private final Timer runTimer;
 
-    public SettlementService(SettlementMapper mapper, TransactionTemplate tx, SettlementLock lock) {
+    public SettlementService(SettlementMapper mapper, TransactionTemplate tx, SettlementLock lock, MeterRegistry meters) {
         this.lock = lock;
+        this.runTimer = Timer.builder("settlement.run").description("정산 한 번(하루치)의 소요 시간").register(meters);
         this.mapper = mapper;
         this.tx = tx;
     }
@@ -64,7 +68,7 @@ public class SettlementService {
 
     /** 해당 날짜(KST)의 판매자별 정산을 만든다. 이미 있는 판매자는 건너뛰므로 다시 실행해도 안전하다. */
     public int settle(LocalDate date) {
-        return lock.run(date, () -> doSettle(date));
+        return lock.run(date, () -> runTimer.record(() -> doSettle(date)));
     }
 
     private int doSettle(LocalDate date) {

@@ -99,3 +99,12 @@ curl -s localhost/actuator/health
 
 ## 재배포
 main에 머지하면 2단계의 자동 배포가 한다. DB 볼륨(`pgdata`)은 유지된다.
+
+## 모니터링 (Prometheus, Grafana)
+서버 compose에 함께 올라간다. 앱이 `/actuator/prometheus`로 내보내는 지표를 Prometheus가 15초마다 읽고(3일 보관), Grafana 대시보드 `market 개요`가 자동으로 올라온다. 요청 수, 응답 시간 p50/p95/p99, 5xx 오류율, JVM 힙, GC, DB 커넥션 풀, 정산 실행 횟수와 평균 소요(`settlement.run`)를 본다.
+
+- 접속: `http://<탄력적IP>/grafana`, 아이디 `admin`
+- 비밀번호는 배포 때 서버에서 자동으로 만들어 `~/market/.env`의 `GRAFANA_PASSWORD`에 있다. 서버에 접속해서 `grep GRAFANA_PASSWORD ~/market/.env`로 확인한다 (화면 공유 중에는 하지 않는다)
+- `/actuator/prometheus`는 인증이 없어서 Caddy가 밖에서는 404로 막는다. Prometheus는 compose 내부 네트워크로만 읽는다
+- 메모리: t3.small(2GB)에서 Prometheus 256MB, Grafana 300MB 한도를 둔다. 스왑 2GB가 있어도 부하 테스트 때는 `free -m`을 확인한다
+- 대시보드 JSON은 `deploy/grafana/dashboards/market.json`이고, 화면에서 고친 것은 서버를 재배포하면 파일 내용으로 돌아간다

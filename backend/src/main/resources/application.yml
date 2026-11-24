@@ -40,4 +40,12 @@ management:
   endpoints:
     web:
       exposure:
-        include: health
+        # prometheus는 인증 없이 열려 있으므로 앞단(Caddy)에서 막는다 (deploy/Caddyfile)
+        include: health,prometheus
+  metrics:
+    tags:
+      application: market
+    distribution:
+      # 요청 지연의 p95를 Prometheus에서 계산하려면 버킷이 필요하다
+      percentiles-histogram:
+        http.server.requests: true

@@ -3,6 +3,8 @@
 set -e
 trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
 cd /home/ubuntu/market   # 폴더 이름이 compose 프로젝트 이름이라 바꾸면 볼륨이 새로 생긴다
+# 모니터링을 추가하기 전에 만든 서버의 .env에는 Grafana 비밀번호가 없으므로 서버에서 만든다 (출력하지 않음)
+grep -q "^GRAFANA_PASSWORD=" .env || echo "GRAFANA_PASSWORD=$(openssl rand -base64 18 | tr -d "/+=")" >> .env
 docker compose pull app
 docker compose up -d
 docker image prune -f >/dev/null

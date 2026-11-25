@@ -39,7 +39,7 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(a -> a
-                        .requestMatchers("/api/auth/**", "/actuator/health/**", "/actuator/prometheus").permitAll()
+                        .requestMatchers("/api/auth/**", "/actuator/health/**", "/actuator/prometheus", "/api/webhooks/portone").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/products/**", "/api/products").permitAll()
                         .requestMatchers("/api/products/**", "/api/products").hasRole("SELLER")
                         .requestMatchers("/api/orders/**", "/api/orders").hasRole("BUYER")

@@ -78,10 +78,19 @@ cat > .env <<EOT
 JWT_SECRET=$(openssl rand -base64 48)
 DB_PASSWORD=$(openssl rand -base64 24 | tr -d '/+=')
 PORTONE_API_SECRET=
+PORTONE_WEBHOOK_SECRET=
 EOT
 chmod 600 .env
 ```
 PortOne 값은 `nano .env`로 직접 채운다. 이 파일은 서버에만 있고 깃에 올리지 않는다.
+
+### PortOne 웹훅 등록
+프론트 호출 없이도 결제 완료가 반영되도록 PortOne이 `POST /api/webhooks/portone`을 호출한다.
+1. PortOne 콘솔 → 결제 연동 → 웹훅에서 URL `http://<탄력적IP>/api/webhooks/portone`(HTTPS가 생기면 https)을 등록하고, 이벤트는 `Transaction.Paid`를 켠다
+2. 콘솔의 웹훅 시크릿(`whsec_...`)을 서버 `.env`의 `PORTONE_WEBHOOK_SECRET`에 넣고 `docker compose up -d`로 앱을 다시 띄운다. 비어 있으면 서버는 웹훅을 모두 401로 거부한다
+3. 콘솔의 호출 테스트로 200이 오는지 확인한다. 서명 헤더 이름과 형식(`webhook-id`, `webhook-timestamp`, `webhook-signature`)은 Standard Webhooks 규격 기준이라 이때 실제로 맞는지 확인한다
+
+서명이 맞아도 본문의 금액은 믿지 않고 결제 번호로 PortOne을 다시 조회해 주문 금액과 대조한다. 같은 웹훅이 다시 와도 결과는 같다(PortOne 발신 IP는 52.78.5.241).
 
 ## 4. 실행과 확인 (서버에서)
 ```bash

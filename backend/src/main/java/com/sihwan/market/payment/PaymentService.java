@@ -3,6 +3,8 @@ package com.sihwan.market.payment;
 import com.sihwan.market.order.Order;
 import com.sihwan.market.order.OrderMapper;
 import com.sihwan.market.payment.PaymentDtos.ConfirmResponse;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -11,6 +13,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class PaymentService {
+
+    private static final Pattern PAYMENT_ID = Pattern.compile("^order-([0-9]{1,18})-");
 
     private final OrderMapper orders;
     private final PaymentMapper payments;
@@ -31,7 +35,35 @@ public class PaymentService {
         if (!paymentId.startsWith("order-" + orderId + "-")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "주문과 맞지 않는 결제 번호입니다");
         }
+        return settle(order, orderId, paymentId);
+    }
 
+    /**
+     * 웹훅이 알려 준 결제를 PortOne에 다시 조회해 반영한다 (프론트 호출 없이도 주문이 PAID가 되게).
+     * 이미 처리한 결제는 같은 결과로 건너뛰고, 금액이 다르면 예외(4xx), 조회 실패는 예외(5xx)로 PortOne이 다시 보내게 한다.
+     */
+    public String syncPaid(String paymentId) {
+        Matcher m = PAYMENT_ID.matcher(paymentId);
+        if (!m.find()) {
+            return "IGNORED"; // 우리가 만든 결제 번호가 아니다
+        }
+        long orderId = Long.parseLong(m.group(1));
+        Order order = orders.findById(orderId).orElse(null);
+        if (order == null) {
+            return "IGNORED";
+        }
+        try {
+            settle(order, orderId, paymentId);
+            return "PAID";
+        } catch (ResponseStatusException e) {
+            if (e.getStatusCode() == HttpStatus.CONFLICT) {
+                return "CONFLICT"; // 아직 결제 전이거나 결제할 수 없는 주문이라 취소했다. 다시 보내도 같은 결과
+            }
+            throw e;
+        }
+    }
+
+    private ConfirmResponse settle(Order order, long orderId, String paymentId) {
         if (payments.findByPortoneId(paymentId).isPresent()) {
             return alreadyProcessed(orderId, paymentId);
         }

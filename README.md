@@ -92,7 +92,7 @@ erDiagram
 | 인증·회원 | `POST /api/auth/signup`, `POST /api/auth/login`, `GET /api/me`, `PUT /api/me/password`, `POST /api/me/withdraw` |
 | 상품 (판매자 쓰기, 조회는 공개) | `POST /api/products`, `GET /api/products`, `GET /api/products/{id}`, `PUT`, `DELETE` |
 | 주문 (구매자) | `POST /api/orders`, `GET /api/orders`, `GET /api/orders/{id}`, 판매자 주문 `GET /api/seller/orders` |
-| 결제·환불 | `POST /api/orders/{orderId}/payments`, `POST /api/orders/{orderId}/refunds` |
+| 결제·환불 | `POST /api/orders/{orderId}/payments`, `POST /api/orders/{orderId}/refunds`, PortOne 웹훅 `POST /api/webhooks/portone` |
 | 정산 (관리자) | `POST /api/admin/settlements`, `GET /api/admin/settlements/missing`, `GET /api/admin/settlements/inconsistent` |
 
 ## 실행 방법

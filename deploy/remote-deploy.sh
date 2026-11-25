@@ -7,6 +7,8 @@ cd /home/ubuntu/market   # 폴더 이름이 compose 프로젝트 이름이라 �
 grep -q "^GRAFANA_PASSWORD=" .env || echo "GRAFANA_PASSWORD=$(openssl rand -base64 18 | tr -d "/+=")" >> .env
 docker compose pull app
 docker compose up -d
+# 설정 파일을 새 파일로 교체하면 실행 중인 Caddy는 이전 파일을 계속 쓰므로 다시 만든다
+docker compose up -d --force-recreate caddy
 docker image prune -f >/dev/null
 for i in $(seq 1 30); do
   if curl -sf localhost/actuator/health | grep -q '"UP"'; then echo "health OK"; exit 0; fi

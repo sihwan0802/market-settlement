@@ -2,6 +2,7 @@ package com.sihwan.market.settlement;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,6 +29,12 @@ public class AdminSettlementController {
         long start = System.nanoTime();
         int created = service.settle(date);
         return new RunResponse(date, created, (System.nanoTime() - start) / 1_000_000);
+    }
+
+    /** 매일 01:00 작업(정산, 검사, 알림)을 지정한 날짜로 바로 실행한다. */
+    @PostMapping("/daily")
+    public Map<String, Object> daily(@RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date) {
+        return service.runDaily(date);
     }
 
     @GetMapping("/missing")

@@ -44,6 +44,20 @@ class AdminSettlementTest {
     }
 
     @Test
+    void daily_runs_settlement_and_checks_and_returns_the_report() throws Exception {
+        String admin = login("ADMIN");
+        mvc.perform(post("/api/admin/settlements/daily").param("date", "2019-01-01"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/admin/settlements/daily").param("date", "2019-01-01").header("Authorization", admin))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.type").value("SETTLEMENT_DAILY"))
+                .andExpect(jsonPath("$.date").value("2019-01-01"))
+                .andExpect(jsonPath("$.created").value(0))
+                .andExpect(jsonPath("$.skipped").value(false))
+                .andExpect(jsonPath("$.missing").isArray());
+    }
+
+    @Test
     void only_admin_can_run_settlement_and_check_consistency() throws Exception {
         String buyer = login("BUYER");
         String admin = login("ADMIN");

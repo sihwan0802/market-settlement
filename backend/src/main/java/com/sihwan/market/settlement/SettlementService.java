@@ -7,6 +7,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -29,9 +30,12 @@ public class SettlementService {
     private final TransactionTemplate tx;
     private final SettlementLock lock;
     private final Timer runTimer;
+    private final SettlementNotifier notifier;
 
-    public SettlementService(SettlementMapper mapper, TransactionTemplate tx, SettlementLock lock, MeterRegistry meters) {
+    public SettlementService(SettlementMapper mapper, TransactionTemplate tx, SettlementLock lock, MeterRegistry meters,
+                             SettlementNotifier notifier) {
         this.lock = lock;
+        this.notifier = notifier;
         this.runTimer = Timer.builder("settlement.run").description("정산 한 번(하루치)의 소요 시간").register(meters);
         this.mapper = mapper;
         this.tx = tx;
@@ -39,10 +43,17 @@ public class SettlementService {
 
     @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Seoul")
     public void settleYesterday() {
-        LocalDate yesterday = LocalDate.now(KST).minusDays(1);
+        runDaily(LocalDate.now(KST).minusDays(1));
+    }
+
+    /** 정산, 정합성 검사, 누락 검사를 하고 결과를 알림으로 보낸다. 매일 01:00 작업과 같다. */
+    public Map<String, Object> runDaily(LocalDate date) {
+        int created = 0;
+        boolean skipped = false;
         try {
-            settle(yesterday);
+            created = settle(date);
         } catch (ResponseStatusException e) {
+            skipped = true;
             log.info("정산 건너뜀: {}", e.getReason()); // 다른 서버가 이미 실행 중
         }
         List<Long> bad = findInconsistent();
@@ -50,10 +61,20 @@ public class SettlementService {
             log.error("정산 정합성 오류: settlement id {}", bad);
         }
         // 서버가 죽어 있었던 날 등 정산 행이 통째로 빠진 경우를 일주일 치 확인한다
-        List<MissingSettlement> missing = findMissing(yesterday.minusDays(6), yesterday);
+        List<MissingSettlement> missing = findMissing(date.minusDays(6), date);
         if (!missing.isEmpty()) {
             log.error("정산 누락: {}", missing);
         }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("type", "SETTLEMENT_DAILY");
+        result.put("date", date.toString());
+        result.put("created", created);
+        result.put("skipped", skipped);
+        result.put("inconsistentIds", bad);
+        result.put("missing", missing);
+        result.put("ok", !skipped && bad.isEmpty() && missing.isEmpty());
+        notifier.send(result);
+        return result;
     }
 
     public List<Long> findInconsistent() {

@@ -20,6 +20,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
       PORTONE_API_SECRET: ${PORTONE_API_SECRET:-}
       PORTONE_WEBHOOK_SECRET: ${PORTONE_WEBHOOK_SECRET:-}
+      NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }

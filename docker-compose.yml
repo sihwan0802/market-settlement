@@ -10,6 +10,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:-dev-only-secret-key-change-me-0123456789}
       PORTONE_API_SECRET: ${PORTONE_API_SECRET:-}
       PORTONE_WEBHOOK_SECRET: ${PORTONE_WEBHOOK_SECRET:-}
+      NOTIFY_WEBHOOK_URL: ${NOTIFY_WEBHOOK_URL:-}
       # 성능 측정 때는 요청 제한을 올려서 띄운다 (docs/performance.md)
       APP_RATE_LIMIT_ORDER_LIMIT: ${RATE_LIMIT_ORDER:-5}
       APP_RATE_LIMIT_LOGIN_LIMIT: ${RATE_LIMIT_LOGIN:-10}

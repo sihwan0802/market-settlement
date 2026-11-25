@@ -93,7 +93,7 @@ erDiagram
 | 상품 (판매자 쓰기, 조회는 공개) | `POST /api/products`, `GET /api/products`, `GET /api/products/{id}`, `PUT`, `DELETE` |
 | 주문 (구매자) | `POST /api/orders`, `GET /api/orders`, `GET /api/orders/{id}`, 판매자 주문 `GET /api/seller/orders` |
 | 결제·환불 | `POST /api/orders/{orderId}/payments`, `POST /api/orders/{orderId}/refunds`, PortOne 웹훅 `POST /api/webhooks/portone` |
-| 정산 (관리자) | `POST /api/admin/settlements`, `GET /api/admin/settlements/missing`, `GET /api/admin/settlements/inconsistent` |
+| 정산 (관리자) | `POST /api/admin/settlements`, `POST /api/admin/settlements/daily`, `GET /api/admin/settlements/missing`, `GET /api/admin/settlements/inconsistent` |
 
 ## 실행 방법
 필요한 것: Docker (앱 실행은 JDK 없이 가능), 테스트는 JDK 21과 Docker.
@@ -124,6 +124,7 @@ cd backend && ./gradlew test     # Testcontainers가 PostgreSQL, Redis를 띄운
 - [ERD와 도메인 결정](docs/ERD.md)
 - [성능 측정](docs/performance.md)
 - [배포와 모니터링](docs/deploy.md)
+- [정산 알림 자동화](docs/automation.md)
 - [이슈 목록 초안](docs/issues.md)
 
 ## 진행
